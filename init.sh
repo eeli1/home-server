@@ -1,0 +1,13 @@
+mkdir -p gitlab/config
+mkdir -p gitlab/logs
+mkdir -p gitlab/data
+mkdir -p postgres
+mkdir -p nextcloud
+mkdir -p jellyfin
+mkdir -p jellyfin/library
+mkdir -p jellyfin/tvseries
+mkdir -p jellyfin/movies
+mkdir -p pihole
+mkdir -p pihole/etc
+mkdir -p pihole/etc/pihole
+mkdir -p pihole/etc/dnsmasq.d
