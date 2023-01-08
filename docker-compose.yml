@@ -1,59 +1,37 @@
 version: "3.6"
 
 services:
-  # More info at https://github.com/pi-hole/docker-pi-hole/ and https://docs.pi-hole.net/
-  pihole:
-    container_name: pihole
-    hostname: 'pihole.homeserver.com'
-    image: pihole/pihole:2022.12
-    # For DHCP it is recommended to remove these ports and instead add: network_mode: "host"
-    ports:
-      - "53:53/tcp"
-      - "53:53/udp"
-    #  - "67:67/udp" # Only required if you are using Pi-hole as your DHCP server
-      - "80:80/tcp"
-    environment:
-      TZ: 'Europe/Berlin'
-      WEBPASSWORD: $PI_HOLE_PASSWORD
-    # Volumes store your data between container upgrades
-    volumes:
-      - '$SERVICE_DIR/pihole/etc/pihole:/etc/pihole'
-      - '$SERVICE_DIR/pihole/etc/dnsmasq.d:/etc/dnsmasq.d'
-    #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
-    # cap_add:
-    #   - NET_ADMIN # Required if you are using Pi-hole as your DHCP server, else not needed
-    restart: unless-stopped
-  
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:10.8.8
     container_name: jellyfin
-    hostname: 'jellyfin.homeserver.com'
+    # hostname: 'jellyfin.homeserver'
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Berlin
-      #- JELLYFIN_PublishedServerUrl=192.168.0.5 #optional
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/Berlin
+      #JELLYFIN_PublishedServerUrl: jellyfin.homeserver #192.168.0.5 #optional
     volumes:
-      - $SERVICE_DIR/jellyfin/library:/config
-      - $SERVICE_DIR/jellyfin/tvseries:/data/tvshows
-      - $SERVICE_DIR/jellyfin/movies:/data/movies
+      - $SERVICE_DIR/jellyfin/config:/config
+      - $SERVICE_DIR/jellyfin/Movies:/data/Movies
+      - $SERVICE_DIR/jellyfin/Shows:/data/Shows
+      - $SERVICE_DIR/jellyfin/Music:/data/Music
+      - $SERVICE_DIR/jellyfin/Books:/data/Books
     ports:
       - 8096:8096
       - 8920:8920 #optional
       - 7359:7359/udp #optional
       - 1900:1900/udp #optional
     restart: unless-stopped
-  
+
   gitlab:
-    image: 'gitlab/gitlab-ee:15.7.0-ee.0'
-    container_name: gitlab
+    image: 'gitlab/gitlab-ce:15.7.1-ce.0'
     restart: always
-    hostname: 'gitlab.homeserver.com'
+    container_name: gitlab
+    hostname: 'gitlab.example.com'
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab.homeserver.com:8929'
+        external_url 'http://gitlab.example.com:8929'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
-        gitlab_rails['initial_root_password'] = '$GITLAB_PASSWORD'
     ports:
       - '8929:8929'
       - '2224:22'
@@ -62,32 +40,104 @@ services:
       - '$SERVICE_DIR/gitlab/logs:/var/log/gitlab'
       - '$SERVICE_DIR/gitlab/data:/var/opt/gitlab'
     shm_size: '256m'
-  
-  postgres-db:
-    container_name: postgres-db
-    image: postgres
-    restart: always
+
+   ## Database Server (recommended)
+  ## see https://docs.photoprism.app/getting-started/faq/#should-i-use-sqlite-mariadb-or-mysql
+  photoprism_db:
+    ## If MariaDB gets stuck in a restart loop, this points to a memory or filesystem issue:
+    ## https://docs.photoprism.app/getting-started/troubleshooting/#fatal-server-errors
+    container_name: photoprism_db
+    restart: unless-stopped
+    image: mariadb:10.10
+    security_opt: # see https://github.com/MariaDB/mariadb-docker/issues/434#issuecomment-1136151239
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command: mysqld --innodb-buffer-pool-size=512M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120    ## Never store database files on an unreliable device such as a USB flash drive, an SD card, or a shared network folder:
     volumes:
-      - $SERVICE_DIR/postgres:/var/lib/postgresql/data
+      - "$SERVICE_DIR/photoprism/db:/var/lib/mysql" # DO NOT REMOVE
     environment:
-      - POSTGRES_DB=$POSTGRES_DB
-      - POSTGRES_USER=$POSTGRES_USER
-      - POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+      MARIADB_AUTO_UPGRADE: "1"
+      MARIADB_INITDB_SKIP_TZINFO: "1"
+      MARIADB_DATABASE: "photoprism"
+      MARIADB_USER: "photoprism"
+      MARIADB_PASSWORD: $DB_PHOTOPRISM_PASSWORD
+      MARIADB_ROOT_PASSWORD: $DB_PHOTOPRISM_ROOT_PASSWORD
+
+  photoprism:
+    container_name: photoprism
+    image: photoprism/photoprism:latest
+    depends_on:
+      - photoprism_db
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    ports:
+      - "2342:2342"
+    environment:
+      PHOTOPRISM_ADMIN_USER: $PHOTOPRISM_ADMIN_USER              # superadmin username
+      PHOTOPRISM_ADMIN_PASSWORD: $PHOTOPRISM_ADMIN_PASSWORD      # initial superadmin password (minimum 8 characters)
+      PHOTOPRISM_AUTH_MODE: "password"                           # authentication mode (public, password)
+      PHOTOPRISM_SITE_URL: "http://photoprism.homeserver:2342/"  # server URL in the format "http(s)://domain.name(:port)/(path)"
+      PHOTOPRISM_ORIGINALS_LIMIT: 5000                           # file size limit for originals in MB (increase for high-res video)
+      PHOTOPRISM_HTTP_COMPRESSION: "gzip"                        # improves transfer speed and bandwidth utilization (none or gzip)
+      PHOTOPRISM_LOG_LEVEL: "info"                               # log level: trace, debug, info, warning, error, fatal, or panic
+      PHOTOPRISM_READONLY: "false"                               # do not modify originals directory (reduced functionality)
+      PHOTOPRISM_EXPERIMENTAL: "false"                           # enables experimental features
+      PHOTOPRISM_DISABLE_CHOWN: "false"                          # disables updating storage permissions via chmod and chown on startup
+      PHOTOPRISM_DISABLE_WEBDAV: "false"                         # disables built-in WebDAV server
+      PHOTOPRISM_DISABLE_SETTINGS: "false"                       # disables settings UI and API
+      PHOTOPRISM_DISABLE_TENSORFLOW: "false"                     # disables all features depending on TensorFlow
+      PHOTOPRISM_DISABLE_FACES: "false"                          # disables face detection and recognition (requires TensorFlow)
+      PHOTOPRISM_DISABLE_CLASSIFICATION: "false"                 # disables image classification (requires TensorFlow)
+      PHOTOPRISM_DISABLE_RAW: "false"                            # disables indexing and conversion of RAW files
+      PHOTOPRISM_RAW_PRESETS: "false"                            # enables applying user presets when converting RAW files (reduces performance)
+      PHOTOPRISM_JPEG_QUALITY: 85                                # a higher value increases the quality and file size of JPEG images and thumbnails (25-100)
+      PHOTOPRISM_DETECT_NSFW: "false"                            # automatically flags photos as private that MAY be offensive (requires TensorFlow)
+      PHOTOPRISM_UPLOAD_NSFW: "true"                             # allows uploads that MAY be offensive (no effect without TensorFlow)
+      # PHOTOPRISM_DATABASE_DRIVER: "sqlite"                     # SQLite is an embedded database that doesn't require a server
+      PHOTOPRISM_DATABASE_DRIVER: "mysql"                        # use MariaDB 10.5+ or MySQL 8+ instead of SQLite for improved performance
+      PHOTOPRISM_DATABASE_SERVER: "photoprism_db:3306"           # MariaDB or MySQL database server (hostname:port)
+      PHOTOPRISM_DATABASE_NAME: "photoprism"                     # MariaDB or MySQL database schema name
+      PHOTOPRISM_DATABASE_USER: "photoprism"                     # MariaDB or MySQL database user name
+      PHOTOPRISM_DATABASE_PASSWORD: $DB_PHOTOPRISM_PASSWORD      # MariaDB or MySQL database user password
+      PHOTOPRISM_SITE_CAPTION: "AI-Powered Photos App"
+      PHOTOPRISM_SITE_DESCRIPTION: "" # meta site description
+      PHOTOPRISM_SITE_AUTHOR: ""      # meta site author
+    working_dir: "/photoprism"        # do not change or remove
+    volumes:
+      # "/host/folder:/photoprism/folder"                          # Example
+      - "$SERVICE_DIR/photoprism/originals:/photoprism/originals"  # Original media files (DO NOT REMOVE)
+      # - "/example/family:/photoprism/originals/family"           # *Additional* media folders can be mounted like this
+      # - "~/Import:/photoprism/import"                            # *Optional* base folder from which files can be imported to originals
+      - "$SERVICE_DIR/photoprism/storage:/photoprism/storage"      # *Writable* storage folder for cache, database, and sidecar files (DO NOT REMOVE)
+
+  nextcloud_db:
+    container_name: nextcloud_db
+    image: mariadb:10.5
+    restart: always
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - $SERVICE_DIR/nextcloud/db:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: $DB_NEXTCLOUD_ROOT_PASSWORD
+      MYSQL_PASSWORD: $DB_NEXTCLOUD_PASSWORD
+      MYSQL_DATABASE: "nextcloud"
+      MYSQL_USER: "nextcloud"
 
   nextcloud:
-    image: nextcloud
     container_name: nextcloud
+    image: nextcloud
     restart: always
     ports:
       - 8080:80
+    links:
+      - nextcloud_db
     volumes:
-      - $SERVICE_DIR/nextcloud:/var/www/html
+      - $SERVICE_DIR/nextcloud/data:/var/www/html
     environment:
-      - POSTGRES_HOST=postgres-db
-      - POSTGRES_DB=$POSTGRES_DB
-      - POSTGRES_USER=$POSTGRES_USER
-      - POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-      - NEXTCLOUD_ADMIN_PASSWORD=$NEXTCLOUD_ADMIN_PASSWORD
-      - NEXTCLOUD_ADMIN_USER=$NEXTCLOUD_ADMIN_USER
-    depends_on:
-      - postgres-db
+      MYSQL_PASSWORD: $DB_NEXTCLOUD_PASSWORD
+      MYSQL_DATABASE: "nextcloud"
+      MYSQL_USER: "nextcloud"
+      MYSQL_HOST: "nextcloud_db"
+      NEXTCLOUD_ADMIN_USER: $NEXTCLOUD_ADMIN_USER
+      NEXTCLOUD_ADMIN_PASSWORD: $NEXTCLOUD_ADMIN_PASSWORD
