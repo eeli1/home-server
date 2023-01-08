@@ -49,6 +49,8 @@ root
 
 get gitlab password with `docker exec -it gitlab grep 'Password:' /etc/gitlab/initial_root_password`
 
+the username is `root`
+
 - photoprism: `http://localhost:2342/`
 - nextcloud: `http://localhost:8080/`
 - gitlab: `http://localhost:8929/` (gitlab could take a while to start)
