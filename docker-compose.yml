@@ -1,21 +1,70 @@
 version: "3.6"
 
 services:
+  # nextcloud:
+  #   image: lscr.io/linuxserver/nextcloud #:25.0.3
+  #   container_name: nextcloud
+  #   # hostname: nextcloud.$BASEURL
+  #   environment:
+  #     PUID: $PUID
+  #     PGID: $PGID
+  #     TZ: $TZ
+  #   volumes:
+  #     - $SERVICE_DIR/nextcloud/config:/config
+  #     - $SERVICE_DIR/nextcloud/data:/data
+  #   ports:
+  #     - 443:443
+  #   restart: unless-stopped
+  # 
+  # calibre:
+  #   image: lscr.io/linuxserver/calibre:latest
+  #   container_name: calibre
+  #   # hostname: calibre.$BASEURL
+  #   # security_opt:
+  #   #   - seccomp:unconfined #optional
+  #   environment:
+  #     PUID: $PUID
+  #     PGID: $PGID
+  #     TZ: $TZ
+  #     PASSWORD: CALIBRE_ADMIN_PASSWORD
+  #     # - CLI_ARGS= #optional
+  #   volumes:
+  #     - $SERVICE_DIR/calibre/config:/config
+  #     # - $SERVICE_DIR/calibre/books:/books
+  #   ports:
+  #     - 8080:8080
+  #     - 8081:8081
+  #   restart: unless-stopped
+
+  booksonic:
+    image: lscr.io/linuxserver/booksonic:version-1.2
+    container_name: booksonic
+    # hostname: booksonic.$BASEURL
+    environment:
+      PUID: $PUID
+      PGID: $PGID
+      TZ: $TZ
+    volumes:
+      - $SERVICE_DIR/booksonic/config:/config
+      - $SERVICE_DIR/booksonic/audiobooks:/audiobooks
+      - $SERVICE_DIR/booksonic/podcasts:/podcasts
+    ports:
+      - 4040:4040
+    restart: unless-stopped
+
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:10.8.8
     container_name: jellyfin
-    # hostname: 'jellyfin.homeserver'
+    # hostname: jellyfin.$BASEURL
     environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: Europe/Berlin
-      #JELLYFIN_PublishedServerUrl: jellyfin.homeserver #192.168.0.5 #optional
+      PUID: $PUID
+      PGID: $PGID
+      TZ: $TZ
+      JELLYFIN_PublishedServerUrl: jellyfin.$BASEURL
     volumes:
       - $SERVICE_DIR/jellyfin/config:/config
       - $SERVICE_DIR/jellyfin/Movies:/data/Movies
       - $SERVICE_DIR/jellyfin/Shows:/data/Shows
-      - $SERVICE_DIR/jellyfin/Music:/data/Music
-      - $SERVICE_DIR/jellyfin/Books:/data/Books
     ports:
       - 8096:8096
       - 8920:8920 #optional
@@ -27,10 +76,10 @@ services:
     image: 'gitlab/gitlab-ce:15.7.1-ce.0'
     restart: always
     container_name: gitlab
-    hostname: 'gitlab.example.com'
+    # hostname: gitlab.$BASEURL
     environment:
+      #external_url 'gitlab.$BASEURL'
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab.example.com:8929'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
     ports:
       - '8929:8929'
@@ -40,6 +89,56 @@ services:
       - '$SERVICE_DIR/gitlab/logs:/var/log/gitlab'
       - '$SERVICE_DIR/gitlab/data:/var/opt/gitlab'
     shm_size: '256m'
+
+  photoprism:
+    container_name: photoprism
+    image: photoprism/photoprism:latest
+    # hostname: photoprism.$BASEURL
+    depends_on:
+      - photoprism_db
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    ports:
+      - "2342:2342"
+    environment:
+      PHOTOPRISM_ADMIN_USER: $PHOTOPRISM_ADMIN_USER              # superadmin username
+      PHOTOPRISM_ADMIN_PASSWORD: $PHOTOPRISM_ADMIN_PASSWORD      # initial superadmin password (minimum 8 characters)
+      PHOTOPRISM_AUTH_MODE: "password"                           # authentication mode (public, password)
+      PHOTOPRISM_SITE_URL: "http://photoprism.$BASEURL"  # server URL in the format "http(s)://domain.name(:port)/(path)"
+      PHOTOPRISM_ORIGINALS_LIMIT: 5000                           # file size limit for originals in MB (increase for high-res video)
+      PHOTOPRISM_HTTP_COMPRESSION: "gzip"                        # improves transfer speed and bandwidth utilization (none or gzip)
+      PHOTOPRISM_LOG_LEVEL: "info"                               # log level: trace, debug, info, warning, error, fatal, or panic
+      PHOTOPRISM_READONLY: "false"                               # do not modify originals directory (reduced functionality)
+      PHOTOPRISM_EXPERIMENTAL: "false"                           # enables experimental features
+      PHOTOPRISM_DISABLE_CHOWN: "false"                          # disables updating storage permissions via chmod and chown on startup
+      PHOTOPRISM_DISABLE_WEBDAV: "false"                         # disables built-in WebDAV server
+      PHOTOPRISM_DISABLE_SETTINGS: "false"                       # disables settings UI and API
+      PHOTOPRISM_DISABLE_TENSORFLOW: "false"                     # disables all features depending on TensorFlow
+      PHOTOPRISM_DISABLE_FACES: "false"                          # disables face detection and recognition (requires TensorFlow)
+      PHOTOPRISM_DISABLE_CLASSIFICATION: "false"                 # disables image classification (requires TensorFlow)
+      PHOTOPRISM_DISABLE_RAW: "false"                            # disables indexing and conversion of RAW files
+      PHOTOPRISM_RAW_PRESETS: "false"                            # enables applying user presets when converting RAW files (reduces performance)
+      PHOTOPRISM_JPEG_QUALITY: 85                                # a higher value increases the quality and file size of JPEG images and thumbnails (25-100)
+      PHOTOPRISM_DETECT_NSFW: "false"                            # automatically flags photos as private that MAY be offensive (requires TensorFlow)
+      PHOTOPRISM_UPLOAD_NSFW: "true"                             # allows uploads that MAY be offensive (no effect without TensorFlow)
+      # PHOTOPRISM_DATABASE_DRIVER: "sqlite"                     # SQLite is an embedded database that doesn't require a server
+      PHOTOPRISM_DATABASE_DRIVER: "mysql"                        # use MariaDB 10.5+ or MySQL 8+ instead of SQLite for improved performance
+      PHOTOPRISM_DATABASE_SERVER: "photoprism_db:3306"           # MariaDB or MySQL database server (# hostname:port)
+      PHOTOPRISM_DATABASE_NAME: "photoprism"                     # MariaDB or MySQL database schema name
+      PHOTOPRISM_DATABASE_USER: "photoprism"                     # MariaDB or MySQL database user name
+      PHOTOPRISM_DATABASE_PASSWORD: $DB_PHOTOPRISM_PASSWORD      # MariaDB or MySQL database user password
+      PHOTOPRISM_SITE_CAPTION: "AI-Powered Photos App"
+      PHOTOPRISM_SITE_DESCRIPTION: "" # meta site description
+      PHOTOPRISM_SITE_AUTHOR: ""      # meta site author
+    working_dir: "/photoprism"        # do not change or remove
+    volumes:
+      # "/host/folder:/photoprism/folder"                          # Example
+      - "$SERVICE_DIR/photoprism/originals:/photoprism/originals"  # Original media files (DO NOT REMOVE)
+      # - "/example/family:/photoprism/originals/family"           # *Additional* media folders can be mounted like this
+      # - "~/Import:/photoprism/import"                            # *Optional* base folder from which files can be imported to originals
+      - "$SERVICE_DIR/photoprism/storage:/photoprism/storage"      # *Writable* storage folder for cache, database, and sidecar files (DO NOT REMOVE)
+
 
    ## Database Server (recommended)
   ## see https://docs.photoprism.app/getting-started/faq/#should-i-use-sqlite-mariadb-or-mysql
@@ -62,82 +161,3 @@ services:
       MARIADB_USER: "photoprism"
       MARIADB_PASSWORD: $DB_PHOTOPRISM_PASSWORD
       MARIADB_ROOT_PASSWORD: $DB_PHOTOPRISM_ROOT_PASSWORD
-
-  photoprism:
-    container_name: photoprism
-    image: photoprism/photoprism:latest
-    depends_on:
-      - photoprism_db
-    security_opt:
-      - seccomp:unconfined
-      - apparmor:unconfined
-    ports:
-      - "2342:2342"
-    environment:
-      PHOTOPRISM_ADMIN_USER: $PHOTOPRISM_ADMIN_USER              # superadmin username
-      PHOTOPRISM_ADMIN_PASSWORD: $PHOTOPRISM_ADMIN_PASSWORD      # initial superadmin password (minimum 8 characters)
-      PHOTOPRISM_AUTH_MODE: "password"                           # authentication mode (public, password)
-      PHOTOPRISM_SITE_URL: "http://photoprism.homeserver:2342/"  # server URL in the format "http(s)://domain.name(:port)/(path)"
-      PHOTOPRISM_ORIGINALS_LIMIT: 5000                           # file size limit for originals in MB (increase for high-res video)
-      PHOTOPRISM_HTTP_COMPRESSION: "gzip"                        # improves transfer speed and bandwidth utilization (none or gzip)
-      PHOTOPRISM_LOG_LEVEL: "info"                               # log level: trace, debug, info, warning, error, fatal, or panic
-      PHOTOPRISM_READONLY: "false"                               # do not modify originals directory (reduced functionality)
-      PHOTOPRISM_EXPERIMENTAL: "false"                           # enables experimental features
-      PHOTOPRISM_DISABLE_CHOWN: "false"                          # disables updating storage permissions via chmod and chown on startup
-      PHOTOPRISM_DISABLE_WEBDAV: "false"                         # disables built-in WebDAV server
-      PHOTOPRISM_DISABLE_SETTINGS: "false"                       # disables settings UI and API
-      PHOTOPRISM_DISABLE_TENSORFLOW: "false"                     # disables all features depending on TensorFlow
-      PHOTOPRISM_DISABLE_FACES: "false"                          # disables face detection and recognition (requires TensorFlow)
-      PHOTOPRISM_DISABLE_CLASSIFICATION: "false"                 # disables image classification (requires TensorFlow)
-      PHOTOPRISM_DISABLE_RAW: "false"                            # disables indexing and conversion of RAW files
-      PHOTOPRISM_RAW_PRESETS: "false"                            # enables applying user presets when converting RAW files (reduces performance)
-      PHOTOPRISM_JPEG_QUALITY: 85                                # a higher value increases the quality and file size of JPEG images and thumbnails (25-100)
-      PHOTOPRISM_DETECT_NSFW: "false"                            # automatically flags photos as private that MAY be offensive (requires TensorFlow)
-      PHOTOPRISM_UPLOAD_NSFW: "true"                             # allows uploads that MAY be offensive (no effect without TensorFlow)
-      # PHOTOPRISM_DATABASE_DRIVER: "sqlite"                     # SQLite is an embedded database that doesn't require a server
-      PHOTOPRISM_DATABASE_DRIVER: "mysql"                        # use MariaDB 10.5+ or MySQL 8+ instead of SQLite for improved performance
-      PHOTOPRISM_DATABASE_SERVER: "photoprism_db:3306"           # MariaDB or MySQL database server (hostname:port)
-      PHOTOPRISM_DATABASE_NAME: "photoprism"                     # MariaDB or MySQL database schema name
-      PHOTOPRISM_DATABASE_USER: "photoprism"                     # MariaDB or MySQL database user name
-      PHOTOPRISM_DATABASE_PASSWORD: $DB_PHOTOPRISM_PASSWORD      # MariaDB or MySQL database user password
-      PHOTOPRISM_SITE_CAPTION: "AI-Powered Photos App"
-      PHOTOPRISM_SITE_DESCRIPTION: "" # meta site description
-      PHOTOPRISM_SITE_AUTHOR: ""      # meta site author
-    working_dir: "/photoprism"        # do not change or remove
-    volumes:
-      # "/host/folder:/photoprism/folder"                          # Example
-      - "$SERVICE_DIR/photoprism/originals:/photoprism/originals"  # Original media files (DO NOT REMOVE)
-      # - "/example/family:/photoprism/originals/family"           # *Additional* media folders can be mounted like this
-      # - "~/Import:/photoprism/import"                            # *Optional* base folder from which files can be imported to originals
-      - "$SERVICE_DIR/photoprism/storage:/photoprism/storage"      # *Writable* storage folder for cache, database, and sidecar files (DO NOT REMOVE)
-
-  nextcloud_db:
-    container_name: nextcloud_db
-    image: mariadb:10.5
-    restart: always
-    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
-    volumes:
-      - $SERVICE_DIR/nextcloud/db:/var/lib/mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: $DB_NEXTCLOUD_ROOT_PASSWORD
-      MYSQL_PASSWORD: $DB_NEXTCLOUD_PASSWORD
-      MYSQL_DATABASE: "nextcloud"
-      MYSQL_USER: "nextcloud"
-
-  nextcloud:
-    container_name: nextcloud
-    image: nextcloud
-    restart: always
-    ports:
-      - 8080:80
-    links:
-      - nextcloud_db
-    volumes:
-      - $SERVICE_DIR/nextcloud/data:/var/www/html
-    environment:
-      MYSQL_PASSWORD: $DB_NEXTCLOUD_PASSWORD
-      MYSQL_DATABASE: "nextcloud"
-      MYSQL_USER: "nextcloud"
-      MYSQL_HOST: "nextcloud_db"
-      NEXTCLOUD_ADMIN_USER: $NEXTCLOUD_ADMIN_USER
-      NEXTCLOUD_ADMIN_PASSWORD: $NEXTCLOUD_ADMIN_PASSWORD

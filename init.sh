@@ -9,8 +9,6 @@ mkdir -p ~/service/jellyfin
 mkdir -p ~/service/jellyfin/config
 mkdir -p ~/service/jellyfin/Movies
 mkdir -p ~/service/jellyfin/Shows
-mkdir -p ~/service/jellyfin/Music
-mkdir -p ~/service/jellyfin/Books
 
 mkdir -p ~/service/photoprism
 mkdir -p ~/service/photoprism/originals
@@ -19,4 +17,12 @@ mkdir -p ~/service/photoprism/db
 
 mkdir -p ~/service/nextcloud
 mkdir -p ~/service/nextcloud/data
-mkdir -p ~/service/nextcloud/db
+mkdir -p ~/service/nextcloud/config
+
+mkdir -p ~/service/booksonic
+mkdir -p ~/service/booksonic/config
+mkdir -p ~/service/booksonic/audiobooks
+
+mkdir -p ~/service/calibre
+mkdir -p ~/service/calibre/config
+mkdir -p ~/service/calibre/books
